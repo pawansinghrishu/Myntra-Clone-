@@ -89,3 +89,79 @@ jobs:
           docker rm -f myntra || true
           docker run -d --name myntra -p 3000:3000 pawan009/myntra:latest
 
+          name: Build, Analyze, Scan, and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-analyze-scan:
+    name: Build and Deploy
+    runs-on: [self-hosted]
+
+    steps:
+      # ------------------------------------------------------
+      # 🧩 Step 1: Checkout Code
+      # ------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------------------
+      # 🧩 Step 2: Stop and Remove Old Container (if any)
+      # ------------------------------------------------------
+      - name: Stop existing container
+        run: |
+          docker stop myntra || true
+          docker rm myntra || true
+
+      # ------------------------------------------------------
+      # 🧩 Step 3: Build Docker Image
+      # ------------------------------------------------------
+      - name: Build Docker image
+        run: |
+          docker build -t myntra .
+          docker tag myntra pawan009/myntra:latest
+
+      # ------------------------------------------------------
+      # 🧩 Step 4: Login to Docker Hub
+      # ------------------------------------------------------
+      - name: Docker Login
+        run: docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ------------------------------------------------------
+      # 🧩 Step 5: Push Image to Docker Hub
+      # ------------------------------------------------------
+      - name: Push Image to Docker Hub
+        run: docker push pawan009/myntra:latest
+
+      # ------------------------------------------------------
+      # 🧩 Step 6: Update kubeconfig for EKS
+      # ------------------------------------------------------
+      - name: Update kubeconfig
+        run: aws eks --region ap-south-1 update-kubeconfig --name EKS_CLOUD
+
+      # ------------------------------------------------------
+      # 🧩 Step 7: Delete Old Deployment (if exists)
+      # ------------------------------------------------------
+      - name: Delete old deployment
+        run: kubectl delete -f deployment-service.yml || true
+
+      # ------------------------------------------------------
+      # 🧩 Step 8: Deploy New Version to Kubernetes
+      # ------------------------------------------------------
+      - name: Deploy to Kubernetes
+        run: kubectl apply -f deployment-service.yml
+
+      # ------------------------------------------------------
+      # 🧩 Step 9: Verify Deployment
+      # ------------------------------------------------------
+      - name: Verify Deployment
+        run: |
+          kubectl get pods
+          kubectl get svc
+
+
